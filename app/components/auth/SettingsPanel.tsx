@@ -6,7 +6,8 @@ import { useSearchParams } from "next/navigation";
 import { 
   AppCard, 
   Button, 
-  Toggle 
+  Toggle,
+  SettingsPageSkeleton
 } from "../ui";
 import { 
   Zap, 
@@ -61,6 +62,29 @@ type GoogleAccount = {
   accountId: string;
   locations: GoogleLocation[];
 };
+
+/**
+ * 에러 코드를 사용자 친화적 메시지로 변환
+ */
+function getErrorMessage(error: string): string {
+  const messages: Record<string, string> = {
+    'RATE_LIMITED': 'Too many requests. Please wait a few minutes and try again.',
+    'SESSION_EXPIRED': 'Your Google session has expired. Please reconnect your account.',
+    'PERMISSION_DENIED': 'Permission denied. Make sure you have access to Google Business Profile.',
+    'GOOGLE_API_ERROR': 'Google service is temporarily unavailable. Please try again later.',
+    'GOOGLE_NOT_CONNECTED': 'Google account is not connected.',
+    'DATABASE_ERROR': 'Something went wrong. Please try again.',
+    'db_error': 'Something went wrong saving your data. Please try again.',
+    'cancelled': 'Google sign-in was cancelled.',
+    'config_error': 'Google connection is not configured. Please contact support.',
+    'missing_params': 'Something went wrong. Please try again.',
+    'invalid_state': 'Session expired. Please try connecting again.',
+    'state_expired': 'Session expired. Please try connecting again.',
+    'unknown': 'An unexpected error occurred. Please try again.',
+  };
+  
+  return messages[error] || error;
+}
 
 /**
  * ⚙️ SettingsPanel - 살롱 설정 패널
@@ -157,11 +181,11 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
         setGoogleLocations(json.data.accounts || []);
         setShowLocationPicker(true);
       } else {
-        setError(json.error || "Failed to fetch locations");
+        setError(getErrorMessage(json.error || "unknown"));
       }
     } catch (err) {
       console.error("Failed to fetch locations:", err);
-      setError("Failed to fetch Google locations");
+      setError(getErrorMessage("unknown"));
     } finally {
       setIsLoadingLocations(false);
     }
@@ -196,11 +220,11 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
         });
         setShowLocationPicker(false);
       } else {
-        setError(json.error || "Failed to connect location");
+        setError(getErrorMessage(json.error || "unknown"));
       }
     } catch (err) {
       console.error("Failed to connect location:", err);
-      setError("Failed to connect location");
+      setError(getErrorMessage("unknown"));
     } finally {
       setIsConnectingLocation(false);
     }
@@ -228,11 +252,11 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
           googleLocationName: null,
         });
       } else {
-        setError(json.error || "Failed to disconnect");
+        setError(getErrorMessage(json.error || "unknown"));
       }
     } catch (err) {
       console.error("Failed to disconnect:", err);
-      setError("Failed to disconnect Google");
+      setError(getErrorMessage("unknown"));
     }
   };
 
@@ -273,13 +297,9 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
     }
   };
 
-  // 로딩 중
+  // 로딩 중 (스켈레톤 UI)
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-      </div>
-    );
+    return <SettingsPageSkeleton />;
   }
 
   // 살롱 없음

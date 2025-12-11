@@ -108,6 +108,7 @@ export async function GET(
     const typedSalon = salon as SalonRow;
 
     // 2. Google 연결 정보 가져오기
+    // 먼저 salon_google_connections 확인
     const { data: googleConnection } = await supabase
       .from("salon_google_connections")
       .select(`
@@ -119,6 +120,34 @@ export async function GET(
       .maybeSingle();
 
     const typedConnection = googleConnection as GoogleConnectionRow | null;
+
+    // salon_google_connections가 없으면, google_accounts에서 직접 확인
+    let googleEmail: string | null = null;
+    let googleConnected = !!typedConnection;
+
+    if (!typedConnection) {
+      // users 테이블에서 user_id 찾기
+      const { data: salonData } = await supabase
+        .from("salons")
+        .select("user_id")
+        .eq("id", salonId)
+        .single();
+
+      if (salonData?.user_id) {
+        const { data: googleAccount } = await supabase
+          .from("google_accounts")
+          .select("email")
+          .eq("user_id", salonData.user_id)
+          .maybeSingle();
+
+        if (googleAccount) {
+          googleConnected = true;
+          googleEmail = googleAccount.email;
+        }
+      }
+    } else {
+      googleEmail = typedConnection.google_accounts?.email || null;
+    }
 
     // 3. 응답 구성
     const response: ApiResponse<SalonSettingsDTO> = {
@@ -140,8 +169,8 @@ export async function GET(
         yelpBusinessId: typedSalon.yelp_business_id || "",
         
         // Google 연결 정보
-        googleConnected: !!typedConnection,
-        googleEmail: typedConnection?.google_accounts?.email || null,
+        googleConnected: googleConnected,
+        googleEmail: googleEmail,
         googleLocationId: typedConnection?.location_id || null,
         googleLocationName: typedConnection?.location_title || null,
       },

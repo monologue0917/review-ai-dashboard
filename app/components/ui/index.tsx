@@ -3,6 +3,16 @@
 
 import React, { ReactNode } from "react";
 
+// Re-export skeleton components
+export { 
+  Skeleton, 
+  ReviewCardSkeleton, 
+  ReviewListSkeleton, 
+  DetailPanelSkeleton,
+  SettingsCardSkeleton,
+  SettingsPageSkeleton 
+} from "./Skeleton";
+
 /* ===== PageHeader ===== */
 type PageHeaderProps = {
   title: string;

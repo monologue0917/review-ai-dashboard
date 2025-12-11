@@ -2,15 +2,15 @@
 "use client";
 
 /**
- * 👤 Account Page - 계정 관리
+ * 👤 Account Page - 계정 관리 (반응형)
  */
 
-import { Sidebar } from "../components/auth/Sidebar";
+import { AppLayout } from "../components/auth/AppLayout";
 import { TopBar } from "../components/auth/TopBar";
 import AccountPanel from "../components/auth/AccountPanel";
 import { useRequireLogin } from "../../lib/auth/useRequireLogin";
 import { useAuthInfo } from "../../lib/auth/useAuthInfo";
-import { Sparkles } from "lucide-react";
+import { SettingsPageSkeleton } from "../components/ui";
 
 export default function AccountPage() {
   const { auth, isLoaded } = useRequireLogin();
@@ -18,33 +18,31 @@ export default function AccountPage() {
 
   if (!isLoaded) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative">
-            <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600" />
-            <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 text-indigo-600" />
+      <AppLayout pageTitle="Account">
+        <div className="flex-1 overflow-auto px-4 lg:px-6 py-6 lg:py-8">
+          <div className="mx-auto max-w-3xl">
+            <SettingsPageSkeleton />
           </div>
-          <p className="text-sm font-medium text-slate-500">Loading account…</p>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-100/50">
-      <Sidebar />
-      
+    <AppLayout pageTitle="Account">
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* TopBar */}
-        <TopBar 
-          salonName={authInfo?.salonName}
-          userEmail={auth?.email}
-        />
+        {/* TopBar - 데스크탑만 */}
+        <div className="hidden lg:block">
+          <TopBar 
+            salonName={authInfo?.salonName}
+            userEmail={auth?.email}
+          />
+        </div>
 
-        {/* Page Header */}
-        <div className="border-b border-slate-200 bg-white px-6 py-5">
-          <div className="mx-auto max-w-4xl">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+        {/* Page Header - 반응형 */}
+        <div className="border-b border-slate-200 bg-white px-4 lg:px-6 py-4 lg:py-5">
+          <div className="mx-auto max-w-3xl">
+            <h1 className="text-lg lg:text-xl font-bold text-slate-900 tracking-tight">
               Account
             </h1>
             <p className="mt-0.5 text-sm text-slate-500">
@@ -55,11 +53,11 @@ export default function AccountPage() {
 
         {/* Content */}
         <main className="flex-1 overflow-auto">
-          <div className="mx-auto max-w-4xl px-6 py-6">
+          <div className="mx-auto max-w-3xl px-4 lg:px-6 py-4 lg:py-6 safe-area-inset-bottom">
             <AccountPanel auth={{ auth, isLoaded }} />
           </div>
         </main>
       </div>
-    </div>
+    </AppLayout>
   );
 }

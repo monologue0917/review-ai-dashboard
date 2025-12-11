@@ -131,9 +131,26 @@ export async function GET(
             })),
           });
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error(`[Google Locations] Error for account ${account.email}:`, err);
-        // 개별 계정 오류는 건너뛰고 계속 진행
+        
+        // Rate limit이면 전체 에러로 반환
+        if (err.message === 'RATE_LIMITED') {
+          return NextResponse.json<ApiError>(
+            { ok: false, error: 'RATE_LIMITED', code: ErrorCode.RATE_LIMITED },
+            { status: 429 }
+          );
+        }
+        
+        // 세션 만료면 재연결 필요
+        if (err.message === 'SESSION_EXPIRED') {
+          return NextResponse.json<ApiError>(
+            { ok: false, error: 'SESSION_EXPIRED', code: ErrorCode.UNAUTHORIZED },
+            { status: 401 }
+          );
+        }
+        
+        // 다른 오류는 건너뛰고 계속 진행
       }
     }
 
@@ -168,7 +185,18 @@ async function fetchGBPAccounts(accessToken: string): Promise<GBPAccount[]> {
   if (!response.ok) {
     const errorText = await response.text();
     console.error('[fetchGBPAccounts] Error:', response.status, errorText);
-    throw new Error(`Failed to fetch GBP accounts: ${response.status}`);
+    
+    // User-friendly error codes
+    switch (response.status) {
+      case 401:
+        throw new Error('SESSION_EXPIRED');
+      case 403:
+        throw new Error('PERMISSION_DENIED');
+      case 429:
+        throw new Error('RATE_LIMITED');
+      default:
+        throw new Error('GOOGLE_API_ERROR');
+    }
   }
 
   const data = await response.json();

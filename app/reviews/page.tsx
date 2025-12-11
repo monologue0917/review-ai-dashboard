@@ -3,29 +3,43 @@
 
 import { Suspense } from "react";
 import ReviewsContent from "./ReviewsContent";
-import { Sidebar } from "../components/auth/Sidebar";
-import { Sparkles } from "lucide-react";
+import { AppLayout } from "../components/auth/AppLayout";
+import { ReviewListSkeleton, DetailPanelSkeleton } from "../components/ui";
 
 export default function ReviewsPage() {
   return (
-    <div className="flex min-h-screen bg-slate-100/50">
-      <Sidebar />
+    <AppLayout pageTitle="Reviews">
       <Suspense fallback={<ReviewsLoading />}>
         <ReviewsContent />
       </Suspense>
-    </div>
+    </AppLayout>
   );
 }
 
 function ReviewsLoading() {
   return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="flex flex-col items-center gap-4">
-        <div className="relative">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600" />
-          <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 text-indigo-600" />
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Header Skeleton */}
+      <div className="border-b border-slate-200 bg-white px-4 lg:px-6 py-3">
+        <div className="mx-auto max-w-7xl flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="h-6 w-20 bg-slate-200 rounded animate-pulse" />
+            <div className="h-4 w-32 bg-slate-200 rounded animate-pulse hidden sm:block" />
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="h-10 w-32 sm:w-48 bg-slate-200 rounded-lg animate-pulse" />
+          </div>
         </div>
-        <p className="text-sm font-medium text-slate-500">Loading reviews…</p>
+      </div>
+
+      {/* Content Skeleton */}
+      <div className="flex-1 overflow-hidden px-4 lg:px-6 py-5">
+        <div className="mx-auto max-w-7xl h-full grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6">
+          <ReviewListSkeleton count={5} />
+          <div className="hidden lg:block">
+            <DetailPanelSkeleton />
+          </div>
+        </div>
       </div>
     </div>
   );
