@@ -72,7 +72,16 @@ export default function SignUpForm() {
   const handleChange =
     (field: keyof SignUpFormData) =>
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+      let value = e.target.value;
+
+      // Contact name은 Title Case로 자동 변환 (Lee Hyeonseok)
+      if (field === "contactName") {
+        value = value
+          .toLowerCase()
+          .replace(/\b\w/g, (char) => char.toUpperCase());
+      }
+
+      setFormData((prev) => ({ ...prev, [field]: value }));
     };
 
   // 2단계 input 핸들러
