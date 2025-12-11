@@ -1,0 +1,58 @@
+========================================
+ReviewAI 구현 파일 - 경로 정리표
+========================================
+
+📍 루트 폴더
+--------------------
+README.md                    ← 전체 개요 (시작점!)
+QUICK-START.md               ← 빠른 시작 가이드
+FILE-STRUCTURE.md            ← 상세 구조 및 경로
+START-HERE.md                ← 완성 안내
+
+📍 Stage 1: 자동 답글 정책
+--------------------
+stage1-settings-policy/README.md
+stage1-settings-policy/migration.sql                          → Supabase SQL Editor
+stage1-settings-policy/settings-route.ts                      → app/api/salons/[id]/settings/route.ts
+stage1-settings-policy/integrations-reviews-route.ts          → app/api/integrations/reviews/route.ts
+stage1-settings-policy/SettingsPanel.tsx                      → app/components/auth/SettingsPanel.tsx
+
+📍 Google OAuth 백엔드
+--------------------
+google-oauth-backend/README.md
+google-oauth-backend/migration-google-oauth.sql               → Supabase SQL Editor
+google-oauth-backend/oauth-utils.ts                           → lib/google/oauth-utils.ts
+google-oauth-backend/auth-start-route.ts                      → app/api/google/auth/start/route.ts
+google-oauth-backend/auth-callback-route.ts                   → app/api/google/auth/callback/route.ts
+google-oauth-backend/env-example.txt                          → .env.local (내용만 추가)
+
+📍 Google OAuth 프론트엔드
+--------------------
+google-oauth-frontend/README.md
+google-oauth-frontend/settings-page.tsx                       → app/settings/page.tsx
+google-oauth-frontend/SettingsPanel.tsx                       → app/components/auth/SettingsPanel.tsx
+
+========================================
+⚠️ SettingsPanel.tsx 충돌 주의!
+========================================
+
+이 파일은 2곳에 있습니다:
+- stage1-settings-policy/SettingsPanel.tsx
+- google-oauth-frontend/SettingsPanel.tsx
+
+적용 순서:
+1. Stage 1 먼저 적용 (첫 번째)
+2. OAuth Frontend 적용 시 덮어쓰기 (두 번째)
+   → Frontend 버전이 Stage 1 내용 모두 포함
+
+========================================
+🚀 시작 방법
+========================================
+
+1. START-HERE.md 읽기
+2. README.md 읽기
+3. stage1-settings-policy/README.md부터 시작
+4. 순서대로 적용
+
+각 README.md에 상세 가이드 있음!
+========================================

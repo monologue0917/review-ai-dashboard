@@ -1,0 +1,81 @@
+// lib/types/api.ts
+/**
+ * 공통 API 응답 타입
+ * 
+ * @deprecated lib/api/types.ts를 사용하세요
+ * 이 파일은 호환성을 위해 유지됩니다.
+ */
+
+// lib/api/types.ts에서 re-export
+export type { ApiResponse, ApiSuccess, ApiError, ErrorCodeType } from "@/lib/api/types";
+export { ErrorCode } from "@/lib/api/types";
+
+// 레거시 호환용 (다른 파일에서 ApiErrorCode를 사용하는 경우)
+export const ApiErrorCode = {
+  // 인증 관련
+  UNAUTHORIZED: "UNAUTHORIZED",
+  INVALID_SESSION: "INVALID_SESSION",
+  
+  // Salon 관련
+  INVALID_SALON_ID: "INVALID_SALON_ID",
+  NO_SALON: "NO_SALON",
+  SALON_NOT_FOUND: "SALON_NOT_FOUND",
+  
+  // Google 연동 관련
+  NO_GOOGLE_CONNECTION: "NO_GOOGLE_CONNECTION",
+  GOOGLE_NOT_CONNECTED: "GOOGLE_NOT_CONNECTED",
+  NO_GOOGLE_LOCATION_SELECTED: "NO_GOOGLE_LOCATION_SELECTED",
+  INVALID_TOKENS: "INVALID_TOKENS",
+  TOKEN_REFRESH_FAILED: "TOKEN_REFRESH_FAILED",
+  NO_ACCOUNTS: "NO_ACCOUNTS",
+  GOOGLE_API_ERROR: "GOOGLE_API_ERROR",
+  GOOGLE_TOKEN_ERROR: "GOOGLE_TOKEN_ERROR",
+  
+  // 일반 에러
+  DB_ERROR: "DB_ERROR",
+  DATABASE_ERROR: "DATABASE_ERROR",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  INVALID_REQUEST: "INVALID_REQUEST",
+  INVALID_INPUT: "INVALID_INPUT",
+  MISSING_FIELD: "MISSING_FIELD",
+  NOT_FOUND: "NOT_FOUND",
+  EXTERNAL_API_ERROR: "EXTERNAL_API_ERROR",
+  
+  // Review 관련
+  REVIEW_NOT_FOUND: "REVIEW_NOT_FOUND",
+  INVALID_REVIEW_ID: "INVALID_REVIEW_ID",
+} as const;
+
+export type ApiErrorCodeType = typeof ApiErrorCode[keyof typeof ApiErrorCode];
+
+/**
+ * HTTP Status Code 매핑
+ */
+export const ErrorStatusMap: Record<string, number> = {
+  UNAUTHORIZED: 401,
+  INVALID_SESSION: 401,
+  TOKEN_REFRESH_FAILED: 401,
+  INVALID_TOKENS: 401,
+  
+  INVALID_SALON_ID: 400,
+  NO_SALON: 400,
+  INVALID_REQUEST: 400,
+  INVALID_INPUT: 400,
+  MISSING_FIELD: 400,
+  
+  NO_GOOGLE_CONNECTION: 404,
+  GOOGLE_NOT_CONNECTED: 404,
+  NO_GOOGLE_LOCATION_SELECTED: 400,
+  NO_ACCOUNTS: 404,
+  NOT_FOUND: 404,
+  SALON_NOT_FOUND: 404,
+  REVIEW_NOT_FOUND: 404,
+  
+  DB_ERROR: 500,
+  DATABASE_ERROR: 500,
+  INTERNAL_ERROR: 500,
+  EXTERNAL_API_ERROR: 500,
+  
+  GOOGLE_API_ERROR: 502,
+  GOOGLE_TOKEN_ERROR: 401,
+};
