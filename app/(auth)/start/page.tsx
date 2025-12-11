@@ -17,11 +17,19 @@ export default function StartPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function checkEmailExists(target: string): Promise<boolean> {
-    const value = target.trim().toLowerCase();
-    // 임시: 이 이메일만 기존 계정으로 취급
-    if (value === "dube000@gmail.com") return true;
-    return false;
+  async function checkEmailExists(email: string): Promise<boolean> {
+    try {
+      const res = await fetch("/api/auth/check-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+      const data = await res.json();
+      return data.exists === true;
+    } catch (err) {
+      console.error("[checkEmailExists] Error:", err);
+      return false;
+    }
   }
 
   async function handleSubmit(e: FormEvent) {
