@@ -359,7 +359,7 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
 
         <div className="p-6">
           {form.googleConnected && form.googleLocationName ? (
-            // 연결됨 상태
+            // 연결됨 상태 (위치까지 선택 완료)
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 rounded-xl bg-emerald-50 border border-emerald-200">
                 <div className="flex items-center gap-3">
@@ -395,8 +395,8 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
                 </div>
               </div>
             </div>
-          ) : googleSuccess ? (
-            // OAuth 성공했지만 위치 선택 안 함
+          ) : form.googleConnected || googleSuccess ? (
+            // Google 계정 연결됨, 위치 선택 필요
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 rounded-xl bg-amber-50 border border-amber-200">
                 <div className="flex items-center gap-3">
@@ -405,7 +405,9 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-slate-900">Select a location</p>
-                    <p className="text-xs text-slate-500">Choose which business to connect</p>
+                    <p className="text-xs text-slate-500">
+                      {form.googleEmail || (googleEmail ? decodeURIComponent(googleEmail) : 'Choose which business to connect')}
+                    </p>
                   </div>
                 </div>
                 <Button
