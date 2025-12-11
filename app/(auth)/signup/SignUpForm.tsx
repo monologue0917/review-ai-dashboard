@@ -17,6 +17,7 @@ type OnboardingData = {
   country: string;
   state: string;
   city: string;
+  customCity: string;  // "Other" 선택 시 직접 입력용
 };
 
 const US_STATES = [
@@ -31,6 +32,130 @@ const US_STATES = [
   { value: "NJ", label: "New Jersey" },
   { value: "PA", label: "Pennsylvania" },
 ];
+
+// 주별 주요 도시 (네일샵 많은 지역 위주)
+const US_CITIES: Record<string, string[]> = {
+  CA: [
+    "Los Angeles",
+    "San Francisco",
+    "San Diego",
+    "San Jose",
+    "Sacramento",
+    "Irvine",
+    "Fremont",
+    "Oakland",
+    "Anaheim",
+    "Long Beach",
+  ],
+  NY: [
+    "New York City",
+    "Brooklyn",
+    "Queens",
+    "Manhattan",
+    "Buffalo",
+    "Albany",
+    "Yonkers",
+    "Syracuse",
+    "Rochester",
+    "Flushing",
+  ],
+  TX: [
+    "Houston",
+    "Dallas",
+    "Austin",
+    "San Antonio",
+    "Fort Worth",
+    "Plano",
+    "Arlington",
+    "El Paso",
+    "Frisco",
+    "Irving",
+  ],
+  FL: [
+    "Miami",
+    "Orlando",
+    "Tampa",
+    "Jacksonville",
+    "Fort Lauderdale",
+    "West Palm Beach",
+    "Hialeah",
+    "St. Petersburg",
+    "Pembroke Pines",
+    "Hollywood",
+  ],
+  WA: [
+    "Seattle",
+    "Tacoma",
+    "Bellevue",
+    "Spokane",
+    "Vancouver",
+    "Kent",
+    "Everett",
+    "Renton",
+    "Federal Way",
+    "Kirkland",
+  ],
+  IL: [
+    "Chicago",
+    "Aurora",
+    "Naperville",
+    "Joliet",
+    "Rockford",
+    "Springfield",
+    "Elgin",
+    "Peoria",
+    "Schaumburg",
+    "Evanston",
+  ],
+  MA: [
+    "Boston",
+    "Cambridge",
+    "Worcester",
+    "Springfield",
+    "Lowell",
+    "Quincy",
+    "Brockton",
+    "New Bedford",
+    "Lynn",
+    "Somerville",
+  ],
+  GA: [
+    "Atlanta",
+    "Augusta",
+    "Savannah",
+    "Columbus",
+    "Marietta",
+    "Sandy Springs",
+    "Roswell",
+    "Johns Creek",
+    "Alpharetta",
+    "Duluth",
+  ],
+  NJ: [
+    "Newark",
+    "Jersey City",
+    "Paterson",
+    "Elizabeth",
+    "Edison",
+    "Trenton",
+    "Clifton",
+    "Cherry Hill",
+    "Fort Lee",
+    "Hoboken",
+  ],
+  PA: [
+    "Philadelphia",
+    "Pittsburgh",
+    "Allentown",
+    "Reading",
+    "Erie",
+    "Scranton",
+    "Bethlehem",
+    "Lancaster",
+    "Harrisburg",
+    "King of Prussia",
+  ],
+};
 
 export default function SignUpForm() {
   const router = useRouter();
@@ -56,6 +181,7 @@ export default function SignUpForm() {
     country: "United States",
     state: "",
     city: "",
+    customCity: "",
   });
 
   const [error, setError] = useState<string | null>(null);
@@ -88,8 +214,18 @@ export default function SignUpForm() {
   const handleOnboardingChange =
     (field: keyof OnboardingData) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-      setOnboarding((prev) => ({ ...prev, [field]: e.target.value }));
+      const value = e.target.value;
+
+      // State 변경 시 City 초기화
+      if (field === "state") {
+        setOnboarding((prev) => ({ ...prev, state: value, city: "", customCity: "" }));
+      } else {
+        setOnboarding((prev) => ({ ...prev, [field]: value }));
+      }
     };
+
+  // 선택된 State의 도시 목록
+  const availableCities = onboarding.state ? US_CITIES[onboarding.state] || [] : [];
 
   // 1단계 제출 → 2단계로 이동
   const handleStep1Submit = (e: React.FormEvent) => {
@@ -132,8 +268,14 @@ export default function SignUpForm() {
       setError("Please select a state.");
       return;
     }
-    if (!onboarding.city.trim()) {
-      setError("Please enter your city.");
+    
+    // City validation: 선택했거나 직접 입력했거나
+    const finalCity = onboarding.city === "__other__" 
+      ? onboarding.customCity.trim() 
+      : onboarding.city;
+    
+    if (!finalCity) {
+      setError("Please select or enter your city.");
       return;
     }
 
@@ -144,6 +286,7 @@ export default function SignUpForm() {
       const payload = {
         ...formData,
         ...onboarding,
+        city: finalCity,  // customCity 대신 최종 city 값 사용
       };
 
       const res = await fetch("/api/auth/signup", {
@@ -437,16 +580,47 @@ export default function SignUpForm() {
                   >
                     City
                   </label>
-                  <input
-                    type="text"
+                  <select
                     id="city"
-                    placeholder="San Francisco"
                     value={onboarding.city}
                     onChange={handleOnboardingChange("city")}
+                    disabled={!onboarding.state}
+                    className="w-full px-4 py-3 border border-[#E5E7EB] rounded-lg bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent disabled:bg-[#F9FAFB] disabled:text-[#9CA3AF] disabled:cursor-not-allowed"
+                  >
+                    <option value="">
+                      {onboarding.state ? "Select a city" : "Select state first"}
+                    </option>
+                    {availableCities.map((city) => (
+                      <option key={city} value={city}>
+                        {city}
+                      </option>
+                    ))}
+                    {onboarding.state && (
+                      <option value="__other__">Other</option>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* "Other" 선택 시 직접 입력란 */}
+              {onboarding.city === "__other__" && (
+                <div>
+                  <label
+                    htmlFor="customCity"
+                    className="block text-[#374151] mb-2 text-[13px] font-medium"
+                  >
+                    Enter your city
+                  </label>
+                  <input
+                    type="text"
+                    id="customCity"
+                    placeholder="Type your city name"
+                    value={onboarding.customCity}
+                    onChange={handleOnboardingChange("customCity")}
                     className="w-full px-4 py-3 border border-[#E5E7EB] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent text-[14px]"
                   />
                 </div>
-              </div>
+              )}
 
               <p className="text-[12px] text-[#9CA3AF]">
                 You can update your salon information later in Settings.
