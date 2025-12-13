@@ -1,17 +1,26 @@
 // app/api/auth/check-email/route.ts
+/**
+ * 이메일 존재 여부 확인 API
+ * 
+ * POST /api/auth/check-email
+ * 
+ * - 존재하면: { exists: true } → 로그인 페이지로
+ * - 없으면: { exists: false } → 회원가입 페이지로
+ */
+
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-function getSupabaseServer() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+// Service Role Key 사용 (RLS 우회)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-  if (!url || !anonKey) {
-    console.error("[check-email api] Missing Supabase env vars");
+function getSupabaseAdmin() {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error("[check-email] Missing Supabase env vars");
     throw new Error("Missing Supabase configuration");
   }
-
-  return createClient(url, anonKey);
+  return createClient(supabaseUrl, supabaseServiceKey);
 }
 
 export async function POST(req: Request) {
@@ -25,26 +34,30 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = getSupabaseServer();
+    const supabase = getSupabaseAdmin();
+    const normalizedEmail = email.trim().toLowerCase();
 
-    // 이메일 존재 여부만 체크
+    // users 테이블에서 이메일 존재 여부 체크
     const { data, error } = await supabase
       .from("users")
       .select("id")
-      .eq("email", email.toLowerCase())
+      .eq("email", normalizedEmail)
       .maybeSingle();
 
     if (error) {
-      console.error("[check-email api] error:", error);
+      console.error("[check-email] DB error:", error);
       return NextResponse.json(
         { error: "Failed to check email", exists: false },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ exists: !!data });
+    const exists = !!data;
+    console.log("[check-email]", normalizedEmail, "exists:", exists);
+
+    return NextResponse.json({ exists });
   } catch (err: any) {
-    console.error("[check-email api] unexpected:", err);
+    console.error("[check-email] Unexpected error:", err);
     return NextResponse.json(
       { error: "Internal server error", exists: false },
       { status: 500 }

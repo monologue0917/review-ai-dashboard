@@ -1,17 +1,22 @@
 // app/api/reviews/[id]/route.ts
+/**
+ * 레거시 리뷰 업데이트 API
+ * TODO: 추후 /api/reviews/[id]/status로 통합 필요
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyAuth } from "@/lib/auth/verifyApiAuth";
 
 function getSupabaseServer() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!url || !anonKey) {
+  if (!url || !serviceKey) {
     console.error("[reviews:id api] Missing Supabase env vars");
     throw new Error("Missing Supabase configuration");
   }
 
-  return createClient(url, anonKey);
+  return createClient(url, serviceKey);
 }
 
 type ReviewUpdatePayload = {
@@ -55,9 +60,40 @@ export async function PATCH(
       );
     }
 
+    // ✅ 인증 검증
+    const auth = await verifyAuth(req);
+    if (!auth.ok) {
+      return NextResponse.json(
+        { error: auth.error },
+        { status: 401 }
+      );
+    }
+
     const body = (await req.json()) as ReviewUpdatePayload;
 
     const supabase = getSupabaseServer();
+
+    // 리뷰의 salon_id 확인
+    const { data: existingReview, error: fetchError } = await supabase
+      .from("reviews")
+      .select("id, salon_id")
+      .eq("id", reviewIdNum)
+      .single();
+
+    if (fetchError || !existingReview) {
+      return NextResponse.json(
+        { error: "Review not found" },
+        { status: 404 }
+      );
+    }
+
+    // ✅ 살롱 접근 권한 확인
+    if (auth.salonId !== existingReview.salon_id) {
+      return NextResponse.json(
+        { error: "Access denied to this review" },
+        { status: 403 }
+      );
+    }
 
     const patch: any = {
       updated_at: new Date().toISOString(),

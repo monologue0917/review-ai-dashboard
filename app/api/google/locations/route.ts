@@ -1,42 +1,32 @@
 // app/api/google/locations/route.ts
 /**
  * ===================================================================
- * Google Business Profile 위치 목록 조회 API
+ * Google Business Profile 위치 목록 조회 API (개선됨)
  * ===================================================================
  * 
  * GET /api/google/locations?userId=xxx
  * 
- * 연결된 Google 계정의 모든 비즈니스 위치를 조회합니다.
- * 
- * 응답 예시:
- * {
- *   ok: true,
- *   data: {
- *     accounts: [
- *       {
- *         accountName: "My Business",
- *         accountId: "123456789",
- *         locations: [
- *           { name: "accounts/123/locations/456", locationId: "456", title: "Leo Nails" }
- *         ]
- *       }
- *     ]
- *   }
- * }
+ * 7종 에러 케이스 처리:
+ * - 토큰 만료 → 자동 갱신
+ * - 토큰 회수 → 재연결 유도
+ * - 권한 부족 → 명확한 에러
+ * - Rate limit → 재시도 안내
+ * - 서버 에러 → 재시도 안내
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { refreshAccessToken, isTokenExpired } from '@/lib/google/oauth';
+import { getValidAccessToken } from '@/lib/google/tokenManager';
+import { listGBPAccounts, listGBPLocations } from '@/lib/google/apiClient';
+import { GoogleError, GoogleErrorCode, GoogleErrorMessages } from '@/lib/google/errors';
 import type { 
   GoogleAccountRow, 
-  GBPAccount, 
-  GBPLocation,
   GoogleLocationDTO,
   GoogleLocationsResponse 
 } from '@/lib/google/types';
 import type { ApiResponse, ApiError } from '@/lib/api/types';
 import { ErrorCode } from '@/lib/api/types';
+import { verifyAuth } from '@/lib/auth/verifyApiAuth';
 
 /* ===== Supabase 클라이언트 ===== */
 
@@ -45,22 +35,33 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+/* ===== 에러 응답 타입 ===== */
+
+type LocationsErrorResponse = {
+  ok: false;
+  error: string;
+  code: string;
+  googleErrorCode?: string;
+  retryable?: boolean;
+};
+
 /* ===== GET 핸들러 ===== */
 
 export async function GET(
   req: NextRequest
-): Promise<NextResponse<ApiResponse<GoogleLocationsResponse>>> {
+): Promise<NextResponse<ApiResponse<GoogleLocationsResponse> | LocationsErrorResponse>> {
   try {
-    // 1) 파라미터 추출
-    const url = new URL(req.url);
-    const userId = url.searchParams.get('userId');
-
-    if (!userId) {
+    // 1) ✅ 인증 검증
+    const auth = await verifyAuth(req, { requireSalon: false });
+    if (!auth.ok) {
       return NextResponse.json<ApiError>(
-        { ok: false, error: 'Missing userId', code: ErrorCode.MISSING_FIELD },
-        { status: 400 }
+        { ok: false, error: auth.error, code: auth.code },
+        { status: 401 }
       );
     }
+
+    // userId는 인증된 사용자의 ID 사용
+    const userId = auth.userId;
 
     // 2) 유저의 Google 계정 조회
     const { data: googleAccounts, error: accountsError } = await supabase
@@ -85,44 +86,36 @@ export async function GET(
 
     // 3) 각 Google 계정에 대해 위치 조회
     const result: GoogleLocationsResponse = { accounts: [] };
+    const errors: { email: string; error: GoogleError }[] = [];
 
     for (const account of googleAccounts as GoogleAccountRow[]) {
       try {
-        // 3-1) 토큰 갱신 (필요시)
-        let accessToken = account.access_token;
+        // 3-1) GBP 계정 목록 조회 (자동 토큰 갱신 포함)
+        const accountsResult = await listGBPAccounts(account.id);
         
-        if (isTokenExpired(account.expiry_at) && account.refresh_token) {
-          console.log('[Google Locations] Refreshing token for:', account.email);
-          
-          const newTokens = await refreshAccessToken(account.refresh_token);
-          accessToken = newTokens.access_token;
-
-          // DB 업데이트
-          await supabase
-            .from('google_accounts')
-            .update({
-              access_token: newTokens.access_token,
-              expiry_at: newTokens.expiry_date 
-                ? new Date(newTokens.expiry_date).toISOString() 
-                : null,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', account.id);
+        if (!accountsResult.ok) {
+          errors.push({ email: account.email, error: accountsResult.error });
+          continue;
         }
 
-        // 3-2) GBP 계정 목록 조회
-        const gbpAccounts = await fetchGBPAccounts(accessToken);
+        const gbpAccounts = accountsResult.data.accounts || [];
 
         for (const gbpAccount of gbpAccounts) {
-          // 3-3) 각 계정의 위치 목록 조회
-          const locations = await fetchGBPLocations(accessToken, gbpAccount.name);
+          // 3-2) 각 계정의 위치 목록 조회
+          const locationsResult = await listGBPLocations(account.id, gbpAccount.name);
           
+          if (!locationsResult.ok) {
+            console.warn(`[Google Locations] Failed to fetch locations for ${gbpAccount.name}:`, locationsResult.error);
+            continue;
+          }
+
+          const locations = locationsResult.data.locations || [];
           const accountId = gbpAccount.name.replace('accounts/', '');
 
           result.accounts.push({
             accountName: gbpAccount.accountName || gbpAccount.name,
             accountId: accountId,
-            locations: locations.map((loc) => ({
+            locations: locations.map((loc: any) => ({
               name: loc.name,
               locationId: loc.name.split('/').pop() || '',
               title: loc.title || 'Unnamed Location',
@@ -131,35 +124,69 @@ export async function GET(
             })),
           });
         }
-      } catch (err: any) {
+      } catch (err) {
         console.error(`[Google Locations] Error for account ${account.email}:`, err);
         
-        // Rate limit이면 전체 에러로 반환
-        if (err.message === 'RATE_LIMITED') {
-          return NextResponse.json<ApiError>(
-            { ok: false, error: 'RATE_LIMITED', code: ErrorCode.RATE_LIMITED },
-            { status: 429 }
-          );
+        if (err instanceof GoogleError) {
+          errors.push({ email: account.email, error: err });
         }
-        
-        // 세션 만료면 재연결 필요
-        if (err.message === 'SESSION_EXPIRED') {
-          return NextResponse.json<ApiError>(
-            { ok: false, error: 'SESSION_EXPIRED', code: ErrorCode.UNAUTHORIZED },
-            { status: 401 }
-          );
-        }
-        
-        // 다른 오류는 건너뛰고 계속 진행
       }
     }
 
+    // 4) 모든 계정이 실패한 경우
+    if (result.accounts.length === 0 && errors.length > 0) {
+      const firstError = errors[0].error;
+      
+      // 특정 에러 코드에 따른 응답
+      if (firstError.code === GoogleErrorCode.TOKEN_REVOKED) {
+        return NextResponse.json<LocationsErrorResponse>({
+          ok: false,
+          error: GoogleErrorMessages.token_revoked,
+          code: ErrorCode.UNAUTHORIZED,
+          googleErrorCode: GoogleErrorCode.TOKEN_REVOKED,
+          retryable: false,
+        }, { status: 401 });
+      }
+
+      if (firstError.code === GoogleErrorCode.RATE_LIMITED) {
+        return NextResponse.json<LocationsErrorResponse>({
+          ok: false,
+          error: GoogleErrorMessages.rate_limited,
+          code: ErrorCode.RATE_LIMITED,
+          googleErrorCode: GoogleErrorCode.RATE_LIMITED,
+          retryable: true,
+        }, { status: 429 });
+      }
+
+      if (firstError.code === GoogleErrorCode.INSUFFICIENT_SCOPE) {
+        return NextResponse.json<LocationsErrorResponse>({
+          ok: false,
+          error: GoogleErrorMessages.insufficient_scope,
+          code: ErrorCode.FORBIDDEN,
+          googleErrorCode: GoogleErrorCode.INSUFFICIENT_SCOPE,
+          retryable: false,
+        }, { status: 403 });
+      }
+    }
+
+    // 5) 성공 (일부 계정 실패해도 나머지는 반환)
     return NextResponse.json<ApiResponse<GoogleLocationsResponse>>({
       ok: true,
       data: result,
     });
   } catch (err) {
     console.error('[Google Locations] Unexpected error:', err);
+    
+    if (err instanceof GoogleError) {
+      return NextResponse.json<LocationsErrorResponse>({
+        ok: false,
+        error: GoogleErrorMessages[err.code] || err.message,
+        code: ErrorCode.EXTERNAL_API_ERROR,
+        googleErrorCode: err.code,
+        retryable: err.retryable,
+      }, { status: err.statusCode });
+    }
+
     return NextResponse.json<ApiError>(
       { ok: false, error: 'Internal server error', code: ErrorCode.INTERNAL_ERROR },
       { status: 500 }
@@ -167,75 +194,12 @@ export async function GET(
   }
 }
 
-/* ===== GBP API 호출 함수들 ===== */
-
-/**
- * My Business Account Management API - 계정 목록 조회
- */
-async function fetchGBPAccounts(accessToken: string): Promise<GBPAccount[]> {
-  const response = await fetch(
-    'https://mybusinessaccountmanagement.googleapis.com/v1/accounts',
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    }
-  );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[fetchGBPAccounts] Error:', response.status, errorText);
-    
-    // User-friendly error codes
-    switch (response.status) {
-      case 401:
-        throw new Error('SESSION_EXPIRED');
-      case 403:
-        throw new Error('PERMISSION_DENIED');
-      case 429:
-        throw new Error('RATE_LIMITED');
-      default:
-        throw new Error('GOOGLE_API_ERROR');
-    }
-  }
-
-  const data = await response.json();
-  return (data.accounts || []) as GBPAccount[];
-}
-
-/**
- * My Business Business Information API - 위치 목록 조회
- */
-async function fetchGBPLocations(accessToken: string, accountName: string): Promise<GBPLocation[]> {
-  // accountName: "accounts/123456789"
-  const response = await fetch(
-    `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title,storefrontAddress,metadata`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    }
-  );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[fetchGBPLocations] Error:', response.status, errorText);
-    
-    // 위치가 없는 계정일 수 있음
-    if (response.status === 404) {
-      return [];
-    }
-    throw new Error(`Failed to fetch locations: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return (data.locations || []) as GBPLocation[];
-}
+/* ===== 헬퍼 함수 ===== */
 
 /**
  * 주소 포맷팅
  */
-function formatAddress(location: GBPLocation): string | undefined {
+function formatAddress(location: any): string | undefined {
   const addr = location.storefrontAddress;
   if (!addr) return undefined;
 

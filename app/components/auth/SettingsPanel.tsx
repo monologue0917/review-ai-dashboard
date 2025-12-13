@@ -3,11 +3,14 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { getAuthHeaders } from "@/lib/auth/useAuthInfo";
+import { fetchWithTimeout, fetchExternal, FetchTimeoutError } from "@/lib/utils/fetchWithTimeout";
 import { 
   AppCard, 
   Button, 
   Toggle,
-  SettingsPageSkeleton
+  SettingsPageSkeleton,
+  ConfirmModal
 } from "../ui";
 import { 
   Zap, 
@@ -22,7 +25,9 @@ import {
   Unlink,
   RefreshCw,
   MapPin,
-  AlertCircle
+  AlertCircle,
+  AlertTriangle,
+  Info
 } from "lucide-react";
 
 type SettingsPanelProps = {
@@ -62,6 +67,9 @@ type GoogleAccount = {
   accountId: string;
   locations: GoogleLocation[];
 };
+
+// 자동 답글 소스 타입
+type AutoReplySource = 'google' | 'yelp';
 
 /**
  * 에러 코드를 사용자 친화적 메시지로 변환
@@ -130,6 +138,15 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
   const [isConnectingLocation, setIsConnectingLocation] = useState(false);
 
+  // 리뷰 동기화 관련
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ imported: number; updated: number } | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+
+  // ⚠️ 자동 답글 경고 모달
+  const [showAutoReplyWarning, setShowAutoReplyWarning] = useState(false);
+  const [pendingAutoReplySource, setPendingAutoReplySource] = useState<AutoReplySource | null>(null);
+
   // 설정 불러오기
   useEffect(() => {
     if (!salonId) {
@@ -139,7 +156,11 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
 
     const fetchSettings = async () => {
       try {
-        const res = await fetch(`/api/salons/${salonId}/settings`);
+        const res = await fetchWithTimeout(`/api/salons/${salonId}/settings`, {
+          headers: getAuthHeaders(),
+          timeout: 10000,
+          retries: 1,
+        });
         const json = await res.json();
 
         if (json.ok && json.data) {
@@ -159,7 +180,11 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
         }
       } catch (err) {
         console.error("Failed to load settings:", err);
-        setError("Failed to load settings");
+        if (err instanceof FetchTimeoutError) {
+          setError("Request timed out. Please refresh the page.");
+        } else {
+          setError("Failed to load settings");
+        }
       } finally {
         setIsLoading(false);
       }
@@ -168,13 +193,48 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
     void fetchSettings();
   }, [salonId, auth?.email]);
 
+  // Auto Reply 토글 핸들러 (경고 모달 표시)
+  const handleAutoReplyToggle = (source: AutoReplySource, newValue: boolean) => {
+    if (newValue) {
+      // ON으로 켜려고 할 때 → 경고 모달 표시
+      setPendingAutoReplySource(source);
+      setShowAutoReplyWarning(true);
+    } else {
+      // OFF로 끄는 건 바로 적용
+      if (source === 'google') {
+        setForm({ ...form, autoReplyGoogle: false });
+      } else {
+        setForm({ ...form, autoReplyYelp: false });
+      }
+    }
+  };
+
+  // 경고 모달에서 확인 클릭
+  const handleConfirmAutoReply = () => {
+    if (pendingAutoReplySource === 'google') {
+      setForm({ ...form, autoReplyGoogle: true });
+    } else if (pendingAutoReplySource === 'yelp') {
+      setForm({ ...form, autoReplyYelp: true });
+    }
+    setShowAutoReplyWarning(false);
+    setPendingAutoReplySource(null);
+  };
+
+  // 경고 모달 닫기
+  const handleCancelAutoReply = () => {
+    setShowAutoReplyWarning(false);
+    setPendingAutoReplySource(null);
+  };
+
   // Google 위치 목록 불러오기
   const fetchGoogleLocations = async () => {
     if (!userId) return;
 
     setIsLoadingLocations(true);
     try {
-      const res = await fetch(`/api/google/locations?userId=${userId}`);
+      const res = await fetchExternal(`/api/google/locations?userId=${userId}`, {
+        headers: getAuthHeaders(),
+      });
       const json = await res.json();
 
       if (json.ok && json.data) {
@@ -185,7 +245,11 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
       }
     } catch (err) {
       console.error("Failed to fetch locations:", err);
-      setError(getErrorMessage("unknown"));
+      if (err instanceof FetchTimeoutError) {
+        setError("Request timed out. Google may be slow. Please try again.");
+      } else {
+        setError(getErrorMessage("unknown"));
+      }
     } finally {
       setIsLoadingLocations(false);
     }
@@ -197,9 +261,12 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
 
     setIsConnectingLocation(true);
     try {
-      const res = await fetch('/api/google/connect-location', {
+      const res = await fetchWithTimeout('/api/google/connect-location', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({
           salonId,
           userId,
@@ -207,6 +274,8 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
           locationId: location.locationId,
           locationTitle: location.title,
         }),
+        timeout: 15000,
+        retries: 1,
       });
 
       const json = await res.json();
@@ -224,7 +293,11 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
       }
     } catch (err) {
       console.error("Failed to connect location:", err);
-      setError(getErrorMessage("unknown"));
+      if (err instanceof FetchTimeoutError) {
+        setError("Request timed out. Please try again.");
+      } else {
+        setError(getErrorMessage("unknown"));
+      }
     } finally {
       setIsConnectingLocation(false);
     }
@@ -237,8 +310,10 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
     if (!confirm("Are you sure you want to disconnect Google?")) return;
 
     try {
-      const res = await fetch(`/api/google/connect-location?salonId=${salonId}`, {
+      const res = await fetchWithTimeout(`/api/google/connect-location?salonId=${salonId}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
+        timeout: 10000,
       });
 
       const json = await res.json();
@@ -251,12 +326,64 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
           googleLocationId: null,
           googleLocationName: null,
         });
+        setLastSyncedAt(null);
       } else {
         setError(getErrorMessage(json.error || "unknown"));
       }
     } catch (err) {
       console.error("Failed to disconnect:", err);
-      setError(getErrorMessage("unknown"));
+      if (err instanceof FetchTimeoutError) {
+        setError("Request timed out. Please try again.");
+      } else {
+        setError(getErrorMessage("unknown"));
+      }
+    }
+  };
+
+  // Google 리뷰 동기화
+  const syncGoogleReviews = async () => {
+    if (!salonId) return;
+
+    setIsSyncing(true);
+    setError(null);
+    setSyncResult(null);
+
+    try {
+      // 동기화는 오래 걸릴 수 있으므로 60초 타임아웃
+      const res = await fetchWithTimeout('/api/google/sync-reviews', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ salonId }),
+        timeout: 60000, // 60초
+        retries: 1,
+      });
+
+      const json = await res.json();
+
+      if (json.ok && json.data) {
+        setSyncResult({
+          imported: json.data.importedCount,
+          updated: json.data.updatedCount,
+        });
+        setLastSyncedAt(new Date().toISOString());
+        
+        // 3초 후 결과 메시지 숨김
+        setTimeout(() => setSyncResult(null), 5000);
+      } else {
+        setError(getErrorMessage(json.code || json.error || "unknown"));
+      }
+    } catch (err) {
+      console.error("Failed to sync:", err);
+      if (err instanceof FetchTimeoutError) {
+        setError("Sync timed out. This might happen with many reviews. Please try again.");
+      } else {
+        setError(getErrorMessage("unknown"));
+      }
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -269,9 +396,12 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
     setSaveSuccess(false);
 
     try {
-      const res = await fetch(`/api/salons/${salonId}/settings`, {
+      const res = await fetchWithTimeout(`/api/salons/${salonId}/settings`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({
           googlePlaceId: form.googlePlaceId,
           yelpBusinessId: form.yelpBusinessId,
@@ -280,6 +410,8 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
           autoReplyMinRating: form.autoReplyMinRating,
           notificationEmail: form.notificationEmail,
         }),
+        timeout: 10000,
+        retries: 1,
       });
 
       const json = await res.json();
@@ -291,7 +423,11 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save settings");
+      if (err instanceof FetchTimeoutError) {
+        setError("Request timed out. Please try again.");
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to save settings");
+      }
     } finally {
       setIsSaving(false);
     }
@@ -316,6 +452,9 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
       </AppCard>
     );
   }
+
+  // 소스별 라벨
+  const sourceLabel = pendingAutoReplySource === 'google' ? 'Google' : 'Yelp';
 
   return (
     <div className="space-y-6">
@@ -359,22 +498,22 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
 
         <div className="p-6">
           {form.googleConnected && form.googleLocationName ? (
-            // 연결됨 상태 (위치까지 선택 완료)
+            // 연결됨 상태 (위치까지 선택 완료) - 모바일 반응형 개선
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-xl bg-emerald-50 border border-emerald-200">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 shrink-0">
                     <CheckCircle2 className="h-5 w-5 text-emerald-600" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-900">Connected</p>
-                    <p className="text-xs text-slate-500">{form.googleLocationName}</p>
+                    <p className="text-xs text-slate-500 truncate">{form.googleLocationName}</p>
                     {form.googleEmail && (
-                      <p className="text-xs text-slate-400">{form.googleEmail}</p>
+                      <p className="text-xs text-slate-400 truncate">{form.googleEmail}</p>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 justify-end">
                   <Button
                     variant="secondary"
                     size="sm"
@@ -382,7 +521,7 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
                     loading={isLoadingLocations}
                   >
                     <RefreshCw className="h-4 w-4" />
-                    Change
+                    <span className="hidden sm:inline">Change</span>
                   </Button>
                   <Button
                     variant="ghost"
@@ -396,16 +535,16 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
               </div>
             </div>
           ) : form.googleConnected || googleSuccess ? (
-            // Google 계정 연결됨, 위치 선택 필요
+            // Google 계정 연결됨, 위치 선택 필요 - 모바일 반응형 개선
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-xl bg-amber-50 border border-amber-200">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 shrink-0">
                     <MapPin className="h-5 w-5 text-amber-600" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-900">Select a location</p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-500 truncate">
                       {form.googleEmail || (googleEmail ? decodeURIComponent(googleEmail) : 'Choose which business to connect')}
                     </p>
                   </div>
@@ -415,6 +554,7 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
                   size="sm"
                   onClick={fetchGoogleLocations}
                   loading={isLoadingLocations}
+                  className="w-full sm:w-auto justify-center"
                 >
                   <MapPin className="h-4 w-4" />
                   Select Location
@@ -541,7 +681,7 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
             </div>
             <Toggle
               enabled={form.autoReplyGoogle}
-              onChange={(v) => setForm({ ...form, autoReplyGoogle: v })}
+              onChange={(v) => handleAutoReplyToggle('google', v)}
             />
           </div>
 
@@ -558,15 +698,15 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
             </div>
             <Toggle
               enabled={form.autoReplyYelp}
-              onChange={(v) => setForm({ ...form, autoReplyYelp: v })}
+              onChange={(v) => handleAutoReplyToggle('yelp', v)}
             />
           </div>
 
-          {/* Min Rating */}
+          {/* Min Rating - 모바일 반응형 개선 */}
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 text-amber-600 shrink-0">
                   <Star className="h-5 w-5" />
                 </div>
                 <div>
@@ -574,13 +714,13 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
                   <p className="text-xs text-slate-500">Only auto-reply to reviews with this rating or higher</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 justify-end">
                 {[1, 2, 3, 4, 5].map((rating) => (
                   <button
                     key={rating}
                     onClick={() => setForm({ ...form, autoReplyMinRating: rating })}
                     className={`
-                      flex h-9 w-9 items-center justify-center rounded-lg text-sm font-semibold transition-all
+                      flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg text-xs sm:text-sm font-semibold transition-all
                       ${form.autoReplyMinRating === rating
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'
                         : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
@@ -593,6 +733,23 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
               </div>
             </div>
           </div>
+
+          {/* Auto Reply 경고 문구 */}
+          {(form.autoReplyGoogle || form.autoReplyYelp) && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                <div className="text-xs text-amber-800">
+                  <p className="font-semibold mb-1">Auto Reply is enabled</p>
+                  <p>
+                    AI replies will be automatically generated for reviews with {form.autoReplyMinRating}+ stars. 
+                    Replies are saved as drafts and <strong>not posted automatically</strong> — 
+                    you can review and post them from the dashboard.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </AppCard>
 
@@ -659,6 +816,57 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
           Save Changes
         </Button>
       </div>
+
+      {/* ⚠️ Auto Reply 경고 모달 */}
+      <ConfirmModal
+        isOpen={showAutoReplyWarning}
+        onClose={handleCancelAutoReply}
+        onConfirm={handleConfirmAutoReply}
+        title={`Enable Auto Reply for ${sourceLabel}?`}
+        icon={<Zap className="h-6 w-6" />}
+        variant="warning"
+        confirmText="Yes, Enable"
+        cancelText="Cancel"
+        message={
+          <div className="space-y-3 text-left mt-2">
+            {/* 주요 안내 */}
+            <div className="rounded-lg bg-indigo-50 border border-indigo-200 p-3">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 text-indigo-600 mt-0.5 shrink-0" />
+                <div className="text-xs text-indigo-800">
+                  <p className="font-semibold mb-1">How Auto Reply works</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    <li>AI replies are generated automatically for new reviews</li>
+                    <li>Only reviews with <strong>{form.autoReplyMinRating}+ stars</strong> get auto-reply</li>
+                    <li>Replies are saved as <strong>drafts</strong> (not posted automatically)</li>
+                    <li>You can review and edit before posting</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* 경고 사항 */}
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                <div className="text-xs text-amber-800">
+                  <p className="font-semibold mb-1">Please note</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-amber-700">
+                    <li>Lower-rated reviews (1-{form.autoReplyMinRating - 1} stars) require manual reply</li>
+                    <li>AI-generated content should be reviewed before posting</li>
+                    <li>You can turn this off at any time</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* 저장 안내 */}
+            <p className="text-xs text-slate-500 text-center">
+              Remember to click <strong>"Save Changes"</strong> to apply this setting.
+            </p>
+          </div>
+        }
+      />
     </div>
   );
 }

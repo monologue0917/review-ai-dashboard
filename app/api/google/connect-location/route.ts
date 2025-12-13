@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import type { ApiResponse, ApiError } from '@/lib/api/types';
 import { ErrorCode } from '@/lib/api/types';
+import { verifyAuthAndSalonAccess } from '@/lib/auth/verifyApiAuth';
 
 /* ===== Supabase 클라이언트 ===== */
 
@@ -58,6 +59,15 @@ export async function POST(
       return NextResponse.json<ApiError>(
         { ok: false, error: 'Missing required fields', code: ErrorCode.MISSING_FIELD },
         { status: 400 }
+      );
+    }
+
+    // ✅ 2-1) 인증 + 살롱 접근 권한 검증
+    const auth = await verifyAuthAndSalonAccess(req, salonId);
+    if (!auth.ok) {
+      return NextResponse.json<ApiError>(
+        { ok: false, error: auth.error, code: auth.code },
+        { status: auth.code === 'FORBIDDEN' ? 403 : 401 }
       );
     }
 
@@ -168,6 +178,15 @@ export async function DELETE(
       return NextResponse.json<ApiError>(
         { ok: false, error: 'Missing salonId', code: ErrorCode.MISSING_FIELD },
         { status: 400 }
+      );
+    }
+
+    // ✅ 인증 + 살롱 접근 권한 검증
+    const auth = await verifyAuthAndSalonAccess(req, salonId);
+    if (!auth.ok) {
+      return NextResponse.json<ApiError>(
+        { ok: false, error: auth.error, code: auth.code },
+        { status: auth.code === 'FORBIDDEN' ? 403 : 401 }
       );
     }
 

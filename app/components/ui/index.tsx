@@ -10,8 +10,13 @@ export {
   ReviewListSkeleton, 
   DetailPanelSkeleton,
   SettingsCardSkeleton,
-  SettingsPageSkeleton 
+  SettingsPageSkeleton,
+  ReviewTableSkeleton 
 } from "./Skeleton";
+
+// Re-export modal components
+export { Modal, ConfirmModal } from "./Modal";
+export type { ModalProps, ConfirmModalProps } from "./Modal";
 
 /* ===== PageHeader ===== */
 type PageHeaderProps = {
@@ -121,8 +126,8 @@ export function SectionTitle({ title, subtitle, action }: SectionTitleProps) {
   );
 }
 
-/* ===== StatusBadge - 가시성 강화 버전 ===== */
-type BadgeStatus = 'new' | 'pending' | 'replied' | 'approved' | 'warning' | 'success' | 'info';
+/* ===== StatusBadge - 워크플로우 상태 지원 ===== */
+type BadgeStatus = 'new' | 'drafted' | 'approved' | 'posted' | 'pending' | 'replied' | 'warning' | 'success' | 'info';
 
 type StatusBadgeProps = {
   status: BadgeStatus;
@@ -136,6 +141,21 @@ const badgeStyles: Record<BadgeStatus, { bg: string; text: string; dot: string }
     text: 'text-violet-800',
     dot: 'bg-violet-500',
   },
+  drafted: {
+    bg: 'bg-amber-100 border-amber-300',
+    text: 'text-amber-800',
+    dot: 'bg-amber-500',
+  },
+  approved: {
+    bg: 'bg-emerald-100 border-emerald-300',
+    text: 'text-emerald-800',
+    dot: 'bg-emerald-500',
+  },
+  posted: {
+    bg: 'bg-sky-100 border-sky-300',
+    text: 'text-sky-800',
+    dot: 'bg-sky-500',
+  },
   pending: {
     bg: 'bg-amber-100 border-amber-300',
     text: 'text-amber-800',
@@ -145,11 +165,6 @@ const badgeStyles: Record<BadgeStatus, { bg: string; text: string; dot: string }
     bg: 'bg-sky-100 border-sky-300',
     text: 'text-sky-800',
     dot: 'bg-sky-500',
-  },
-  approved: {
-    bg: 'bg-emerald-100 border-emerald-300',
-    text: 'text-emerald-800',
-    dot: 'bg-emerald-500',
   },
   warning: {
     bg: 'bg-orange-100 border-orange-300',
@@ -170,9 +185,11 @@ const badgeStyles: Record<BadgeStatus, { bg: string; text: string; dot: string }
 
 const badgeLabels: Record<BadgeStatus, string> = {
   new: 'New',
+  drafted: 'Drafted',
+  approved: 'Approved',
+  posted: 'Posted',
   pending: 'Pending',
   replied: 'Replied',
-  approved: 'Approved',
   warning: 'Warning',
   success: 'Success',
   info: 'Info',
@@ -295,6 +312,7 @@ type ButtonProps = {
   onClick?: (e?: React.MouseEvent<HTMLButtonElement>) => void;
   className?: string;
   type?: 'button' | 'submit';
+  title?: string; // HTML title attribute for tooltip
 };
 
 export function Button({
@@ -306,6 +324,7 @@ export function Button({
   onClick,
   className = '',
   type = 'button',
+  title,
 }: ButtonProps) {
   const baseStyles = 'inline-flex items-center justify-center font-semibold transition-all rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
 
@@ -328,6 +347,7 @@ export function Button({
       onClick={onClick}
       disabled={disabled || loading}
       className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
+      title={title}
     >
       {loading && (
         <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
@@ -509,6 +529,236 @@ export function AIReadyBadge({ ready, size = 'md' }: AIReadyBadgeProps) {
         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
       </svg>
       <span>AI Ready</span>
+    </div>
+  );
+}
+
+/* ===== RiskTagBadge - 부정 리뷰 태그 ===== */
+
+// Risk Tag 색상 매핑
+const riskTagColors: Record<string, { bg: string; text: string; border: string }> = {
+  wait_time: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+  service_quality: { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
+  rude_staff: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+  cleanliness: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
+  price: { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200' },
+  booking: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  results: { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200' },
+  communication: { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
+  other: { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
+};
+
+// Risk Tag 라벨 매핑
+const riskTagLabels: Record<string, string> = {
+  wait_time: 'Wait Time',
+  service_quality: 'Service Quality',
+  rude_staff: 'Rude Staff',
+  cleanliness: 'Cleanliness',
+  price: 'Price',
+  booking: 'Booking Issues',
+  results: 'Results',
+  communication: 'Communication',
+  other: 'Other',
+};
+
+type RiskTagBadgeProps = {
+  tag: string;
+  size?: 'sm' | 'md';
+};
+
+export function RiskTagBadge({ tag, size = 'md' }: RiskTagBadgeProps) {
+  const normalizedTag = tag.toLowerCase();
+  const colors = riskTagColors[normalizedTag] || riskTagColors.other;
+  const label = riskTagLabels[normalizedTag] || tag;
+  
+  const sizeClasses = size === 'sm'
+    ? 'px-1.5 py-0.5 text-[10px]'
+    : 'px-2 py-1 text-xs';
+  
+  return (
+    <span className={`inline-flex items-center rounded-md border font-medium ${colors.bg} ${colors.text} ${colors.border} ${sizeClasses}`}>
+      {label}
+    </span>
+  );
+}
+
+/* ===== RiskTagsDisplay - 여러 태그 표시 ===== */
+type RiskTagsDisplayProps = {
+  tags: string[];
+  size?: 'sm' | 'md';
+  maxVisible?: number;
+  className?: string;
+};
+
+export function RiskTagsDisplay({ tags, size = 'md', maxVisible = 3, className = '' }: RiskTagsDisplayProps) {
+  if (!tags || tags.length === 0) return null;
+  
+  const visibleTags = tags.slice(0, maxVisible);
+  const remainingCount = tags.length - maxVisible;
+  
+  return (
+    <div className={`flex flex-wrap items-center gap-1.5 ${className}`}>
+      {visibleTags.map((tag) => (
+        <RiskTagBadge key={tag} tag={tag} size={size} />
+      ))}
+      {remainingCount > 0 && (
+        <span className="text-xs font-medium text-slate-500">
+          +{remainingCount} more
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ===== StatusFilterSelect - 필터 드롭다운 ===== */
+
+export type StatusFilterOption = 'all' | 'new' | 'drafted' | 'approved' | 'posted';
+
+type StatusFilterSelectProps = {
+  value: StatusFilterOption;
+  onChange: (value: StatusFilterOption) => void;
+  counts: Record<StatusFilterOption, number>;
+};
+
+export function StatusFilterSelect({ value, onChange, counts }: StatusFilterSelectProps) {
+  const options: { value: StatusFilterOption; label: string }[] = [
+    { value: 'all', label: 'All' },
+    { value: 'new', label: 'New' },
+    { value: 'drafted', label: 'Drafted' },
+    { value: 'approved', label: 'Approved' },
+    { value: 'posted', label: 'Posted' },
+  ];
+
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as StatusFilterOption)}
+        className="appearance-none pl-3 pr-8 py-2 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 cursor-pointer"
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label} ({counts[opt.value]})
+          </option>
+        ))}
+      </select>
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+        <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+/* ===== StatusSelect - 상태 드롭다운 ===== */
+import type { ReviewStatus } from "@/lib/reviews/types";
+
+type StatusSelectProps = {
+  value: ReviewStatus;
+  onChange: (status: ReviewStatus) => void;
+  disabled?: boolean;
+  loading?: boolean;
+};
+
+const STATUS_OPTIONS: { value: ReviewStatus; label: string; color: string }[] = [
+  { value: 'new', label: 'New', color: 'violet' },
+  { value: 'drafted', label: 'Drafted', color: 'amber' },
+  { value: 'approved', label: 'Approved', color: 'emerald' },
+  { value: 'posted', label: 'Posted', color: 'sky' },
+];
+
+export function StatusSelect({ value, onChange, disabled = false, loading = false }: StatusSelectProps) {
+  const currentOption = STATUS_OPTIONS.find(opt => opt.value === value) || STATUS_OPTIONS[0];
+  
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as ReviewStatus)}
+        disabled={disabled || loading}
+        className={`
+          appearance-none w-full px-3 py-2 pr-8 rounded-lg border text-sm font-semibold
+          focus:outline-none focus:ring-2 focus:ring-offset-1 transition-all cursor-pointer
+          ${disabled || loading ? 'opacity-50 cursor-not-allowed' : ''}
+          ${currentOption.color === 'violet' 
+            ? 'bg-violet-50 border-violet-300 text-violet-800 focus:ring-violet-500'
+            : currentOption.color === 'amber'
+            ? 'bg-amber-50 border-amber-300 text-amber-800 focus:ring-amber-500'
+            : currentOption.color === 'emerald'
+            ? 'bg-emerald-50 border-emerald-300 text-emerald-800 focus:ring-emerald-500'
+            : 'bg-sky-50 border-sky-300 text-sky-800 focus:ring-sky-500'
+          }
+        `}
+      >
+        {STATUS_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      
+      {/* 화살표 아이콘 */}
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+        {loading ? (
+          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+        ) : (
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ===== ViewModeToggle - 카드/테이블 뷰 전환 ===== */
+import { LayoutGrid, List } from "lucide-react";
+
+export type ViewMode = 'card' | 'table';
+
+type ViewModeToggleProps = {
+  mode: ViewMode;
+  onChange: (mode: ViewMode) => void;
+  disabled?: boolean;
+};
+
+export function ViewModeToggle({ mode, onChange, disabled = false }: ViewModeToggleProps) {
+  return (
+    <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+      <button
+        onClick={() => onChange('card')}
+        disabled={disabled}
+        className={`
+          p-1.5 rounded-md transition-all duration-150
+          ${mode === 'card'
+            ? 'bg-white text-slate-900 shadow-sm'
+            : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+          }
+          ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
+        `}
+        title="Card view"
+      >
+        <LayoutGrid className="h-4 w-4" />
+      </button>
+      <button
+        onClick={() => onChange('table')}
+        disabled={disabled}
+        className={`
+          p-1.5 rounded-md transition-all duration-150
+          ${mode === 'table'
+            ? 'bg-white text-slate-900 shadow-sm'
+            : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+          }
+          ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
+        `}
+        title="Table view"
+      >
+        <List className="h-4 w-4" />
+      </button>
     </div>
   );
 }

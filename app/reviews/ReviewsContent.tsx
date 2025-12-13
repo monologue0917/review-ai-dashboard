@@ -2,28 +2,42 @@
 "use client";
 
 /**
- * 📝 ReviewsContent - 리뷰 관리 페이지 콘텐츠 (반응형)
+ * 📝 ReviewsContent - 리뷰 관리 페이지 (드롭다운 필터)
  */
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { TopBar } from "../components/auth/TopBar";
 import { ReviewCard } from "../components/auth/ReviewCard";
 import { ReviewDetailPanel } from "../components/auth/ReviewDetailPanel";
-import { Button, EmptyState, ReviewListSkeleton, DetailPanelSkeleton } from "../components/ui";
+import { ReviewsTable, SortField, SortDirection } from "../components/auth/ReviewsTable";
+import { 
+  Button, 
+  EmptyState, 
+  ReviewListSkeleton, 
+  DetailPanelSkeleton,
+  ReviewTableSkeleton,
+  ViewModeToggle,
+  ViewMode,
+  StatusFilterSelect,
+  StatusFilterOption,
+} from "../components/ui";
 
 import { useReviewDashboard } from "../../lib/reviews/useReviewDashboard";
 import { useRequireLogin } from "../../lib/auth/useRequireLogin";
+import type { ReviewStatus } from "@/lib/reviews/types";
 
 import { 
   RotateCw, 
   AlertCircle, 
   MessageSquare,
   Search,
-  X
+  X,
+  AlertTriangle,
 } from "lucide-react";
 
-type StatusFilter = "all" | "new" | "replied";
+// localStorage 키
+const VIEW_MODE_STORAGE_KEY = 'reviewai_view_mode';
 
 export default function ReviewsContent() {
   const searchParams = useSearchParams();
@@ -42,23 +56,65 @@ export default function ReviewsContent() {
     refresh,
     generateReply,
     isGeneratingReply,
+    updateStatus,
+    isUpdatingStatus,
     salonId,
     salonName,
   } = useReviewDashboard();
 
   // 3) URL 파라미터에서 초기값 설정
-  const initialFilter = searchParams.get("filter") as StatusFilter | null;
+  const initialFilter = searchParams.get("filter") as StatusFilterOption | null;
   const initialSelected = searchParams.get("selected");
 
   // 4) 필터 & 검색 상태
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialFilter || "all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilterOption>(initialFilter || "all");
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
-  // 5) 모바일 상세 패널 모달
+  // 5) 뷰 모드 상태 (localStorage에서 복원)
+  const [viewMode, setViewMode] = useState<ViewMode>('card');
+  const [isMobile, setIsMobile] = useState(false);
+
+  // 6) 정렬 상태
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  // 7) 모바일 상세 패널 모달
   const [showMobileDetail, setShowMobileDetail] = useState(false);
 
-  // 6) URL에서 선택된 리뷰 ID 설정
+  // 8) 클라이언트에서만 localStorage 읽기 + 화면 크기 감지
+  useEffect(() => {
+    const saved = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+    if (saved === 'card' || saved === 'table') {
+      setViewMode(saved);
+    }
+
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // 9) 뷰 모드 변경 핸들러
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
+    setViewMode(mode);
+    localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode);
+  }, []);
+
+  // 10) 정렬 핸들러
+  const handleSort = useCallback((field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  }, [sortField]);
+
+  // 11) URL에서 선택된 리뷰 ID 설정
   useEffect(() => {
     if (initialSelected) {
       const id = parseInt(initialSelected, 10);
@@ -68,76 +124,112 @@ export default function ReviewsContent() {
     }
   }, [initialSelected, setSelectedReviewId]);
 
-  // 7) 리뷰 선택 시 모바일에서 상세 패널 열기
-  const handleSelectReview = (id: number) => {
+  // 12) 리뷰 선택 시 모바일에서 상세 패널 열기
+  const handleSelectReview = useCallback((id: number) => {
     setSelectedReviewId(id);
-    // 모바일에서만 모달 열기
     if (window.innerWidth < 1024) {
       setShowMobileDetail(true);
     }
-  };
+  }, [setSelectedReviewId]);
 
-  // 8) 필터링된 리뷰
+  // 13) 필터링된 리뷰
   const filteredReviews = useMemo(() => {
     let filtered = reviews;
 
-    if (statusFilter === "new") {
-      filtered = filtered.filter((r) => !r.latestReply);
-    } else if (statusFilter === "replied") {
-      filtered = filtered.filter((r) => r.latestReply);
+    // 상태 필터
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter((r) => r.status === statusFilter);
     }
 
+    // 검색 필터
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter((review) =>
         (review.customerName?.toLowerCase().includes(query)) ||
-        (review.reviewText?.toLowerCase().includes(query))
+        (review.reviewText?.toLowerCase().includes(query)) ||
+        (Array.isArray(review.riskTags) && review.riskTags.some(tag => tag.toLowerCase().includes(query)))
       );
     }
 
     return filtered;
   }, [reviews, statusFilter, searchQuery]);
 
-  // 9) 필터 카운트
+  // 14) 정렬된 리뷰
+  const sortedReviews = useMemo(() => {
+    const sorted = [...filteredReviews];
+    
+    const statusOrder: Record<ReviewStatus, number> = {
+      new: 0,
+      drafted: 1,
+      approved: 2,
+      posted: 3,
+    };
+    
+    sorted.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortField) {
+        case 'date':
+          const dateA = a.reviewDate ? new Date(a.reviewDate).getTime() : 0;
+          const dateB = b.reviewDate ? new Date(b.reviewDate).getTime() : 0;
+          comparison = dateA - dateB;
+          break;
+        case 'rating':
+          comparison = (a.rating ?? 0) - (b.rating ?? 0);
+          break;
+        case 'status':
+          comparison = statusOrder[a.status] - statusOrder[b.status];
+          break;
+        case 'source':
+          comparison = (a.source ?? '').localeCompare(b.source ?? '');
+          break;
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+    
+    return sorted;
+  }, [filteredReviews, sortField, sortDirection]);
+
+  // 15) 필터 카운트
   const filterCounts = useMemo(() => ({
     all: reviews.length,
-    new: reviews.filter((r) => !r.latestReply).length,
-    replied: reviews.filter((r) => r.latestReply).length,
+    new: reviews.filter((r) => r.status === 'new').length,
+    drafted: reviews.filter((r) => r.status === 'drafted').length,
+    approved: reviews.filter((r) => r.status === 'approved').length,
+    posted: reviews.filter((r) => r.status === 'posted').length,
   }), [reviews]);
 
-  // 10) 필터 버튼 데이터
-  const filterButtons: { key: StatusFilter; label: string; count: number; color?: string }[] = [
-    { key: "all", label: "All", count: filterCounts.all },
-    { key: "new", label: "New", count: filterCounts.new, color: "amber" },
-    { key: "replied", label: "AI Ready", count: filterCounts.replied, color: "emerald" },
-  ];
+  // 16) 실제 뷰 모드 (모바일에서는 카드 뷰 강제)
+  const effectiveViewMode = isMobile ? 'card' : viewMode;
 
-  // 11) 로딩 중 (스켈레톤 UI)
+  // 17) 로딩 중 (스켈레톤 UI)
   if (!authLoaded || isLoading) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* TopBar - 데스크탑만 */}
         <div className="hidden lg:block h-16 border-b border-slate-200 bg-white" />
         
-        {/* Header Skeleton */}
         <div className="border-b border-slate-200 bg-white px-4 lg:px-6 py-3">
           <div className="mx-auto max-w-7xl flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2 sm:gap-4">
-              <div className="h-6 w-16 sm:w-20 bg-slate-200 rounded animate-pulse" />
-              <div className="hidden sm:block h-4 w-px bg-slate-200" />
-              <div className="hidden sm:block h-4 w-32 bg-slate-200 rounded animate-pulse" />
+            <div className="flex items-center gap-3">
+              <div className="h-6 w-20 bg-slate-200 rounded animate-pulse" />
+              <div className="h-10 w-32 bg-slate-200 rounded-lg animate-pulse" />
             </div>
             <div className="flex items-center gap-2">
-              <div className="h-10 w-28 sm:w-48 bg-slate-200 rounded-lg animate-pulse" />
-              <div className="h-10 w-10 sm:w-24 bg-slate-200 rounded-xl animate-pulse" />
+              <div className="h-10 w-20 bg-slate-200 rounded-lg animate-pulse" />
+              <div className="h-10 w-48 bg-slate-200 rounded-lg animate-pulse" />
+              <div className="h-10 w-24 bg-slate-200 rounded-xl animate-pulse" />
             </div>
           </div>
         </div>
 
-        {/* Content Skeleton */}
-        <div className="flex-1 overflow-hidden px-4 lg:px-6 py-5">
-          <div className="mx-auto max-w-7xl h-full grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6">
-            <ReviewListSkeleton count={5} />
+        <div className="flex-1 overflow-hidden px-4 lg:px-5 py-4">
+          <div className="mx-auto max-w-7xl h-full grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
+            {effectiveViewMode === 'table' ? (
+              <ReviewTableSkeleton rows={8} />
+            ) : (
+              <ReviewListSkeleton count={5} />
+            )}
             <div className="hidden lg:block">
               <DetailPanelSkeleton />
             </div>
@@ -147,7 +239,7 @@ export default function ReviewsContent() {
     );
   }
 
-  // 12) 살롱 없음
+  // 18) 살롱 없음
   if (authLoaded && !salonId) {
     return (
       <main className="flex flex-1 items-center justify-center p-4 lg:p-6">
@@ -174,72 +266,37 @@ export default function ReviewsContent() {
         />
       </div>
 
-      {/* Compact Header - 반응형 */}
+      {/* Header - 한 줄로 정리 */}
       <div className="border-b border-slate-200 bg-white px-4 lg:px-6 py-3">
-        <div className="mx-auto max-w-7xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          {/* 좌측: 제목 + 통계 + 필터 */}
-          <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 overflow-x-auto pb-1 sm:pb-0">
-            {/* 제목 + 통계 */}
-            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              <h1 className="text-base lg:text-lg font-bold text-slate-900">
-                Reviews
-              </h1>
-              <div className="hidden sm:block h-4 w-px bg-slate-200" />
-              <p className="hidden sm:block text-sm text-slate-500">
-                <span className="font-semibold text-slate-700">{filterCounts.all}</span>
-                <span className="mx-1">total</span>
-                {filterCounts.new > 0 && (
-                  <>
-                    <span className="text-slate-300">·</span>
-                    <span className="ml-1 font-semibold text-amber-600">{filterCounts.new}</span>
-                    <span className="text-amber-600 ml-0.5">needs reply</span>
-                  </>
-                )}
-              </p>
-            </div>
-
-            {/* 필터 탭 */}
-            <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 border border-slate-200">
-              {filterButtons.map((btn) => {
-                const isActive = statusFilter === btn.key;
-                return (
-                  <button
-                    key={btn.key}
-                    onClick={() => setStatusFilter(btn.key)}
-                    className={`
-                      px-2 sm:px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-150 whitespace-nowrap
-                      ${isActive
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
-                      }
-                    `}
-                  >
-                    {btn.label}
-                    <span className={`
-                      ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold
-                      ${isActive
-                        ? btn.color === 'amber' 
-                          ? 'bg-amber-100 text-amber-700'
-                          : btn.color === 'emerald'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-slate-200 text-slate-600'
-                        : 'bg-slate-200/70 text-slate-500'
-                      }
-                    `}>
-                      {btn.count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+        <div className="mx-auto max-w-7xl flex items-center justify-between gap-4">
+          {/* 좌측: 제목 + 필터 드롭다운 */}
+          <div className="flex items-center gap-3">
+            <h1 className="text-base lg:text-lg font-bold text-slate-900">
+              Reviews
+            </h1>
+            
+            {/* 필터 드롭다운 */}
+            <StatusFilterSelect
+              value={statusFilter}
+              onChange={setStatusFilter}
+              counts={filterCounts}
+            />
           </div>
 
-          {/* 우측: 검색 + 새로고침 */}
-          <div className="flex items-center gap-2 shrink-0">
-            {/* 검색 */}
+          {/* 우측: 뷰 토글 + 검색 + 새로고침 */}
+          <div className="flex items-center gap-2">
+            {/* 뷰 모드 토글 - 데스크탑에서만 */}
+            <div className="hidden lg:block">
+              <ViewModeToggle 
+                mode={viewMode} 
+                onChange={handleViewModeChange}
+              />
+            </div>
+
+            {/* 검색 - 모바일 반응형 개선 */}
             <div className={`
-              relative transition-all duration-200 flex-1 sm:flex-none
-              ${isSearchFocused ? 'sm:w-64' : 'sm:w-48'}
+              relative transition-all duration-200
+              ${isSearchFocused ? 'w-40 sm:w-64' : 'w-28 sm:w-48'}
             `}>
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
@@ -290,16 +347,22 @@ export default function ReviewsContent() {
           </div>
         )}
 
-        {/* Main Grid: Reviews List + Detail Panel */}
-        <div className="flex-1 overflow-hidden px-4 lg:px-6 py-4 lg:py-5">
-          <div className="mx-auto max-w-7xl h-full grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4 lg:gap-6">
-            {/* Reviews List */}
-            <div className="overflow-auto space-y-3 pr-1 -mr-1 lg:pr-2 lg:-mr-2">
-              {filteredReviews.length === 0 ? (
+        {/* Main Grid */}
+        <div className="flex-1 overflow-hidden px-4 lg:px-5 py-4">
+          <div className="mx-auto max-w-7xl h-full grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
+            {/* Reviews List or Table */}
+            <div className="overflow-auto pr-1 -mr-1 lg:pr-2 lg:-mr-2">
+              {sortedReviews.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-white p-8 lg:p-12">
                   <EmptyState
                     icon={<MessageSquare className="h-8 w-8" />}
-                    title={searchQuery ? "No matching reviews" : statusFilter !== "all" ? "No reviews in this category" : "No reviews yet"}
+                    title={
+                      searchQuery 
+                        ? "No matching reviews" 
+                        : statusFilter !== "all" 
+                        ? `No ${statusFilter} reviews` 
+                        : "No reviews yet"
+                    }
                     description={
                       searchQuery
                         ? "Try adjusting your search term"
@@ -323,17 +386,30 @@ export default function ReviewsContent() {
                     }
                   />
                 </div>
+              ) : effectiveViewMode === 'table' ? (
+                <ReviewsTable
+                  reviews={sortedReviews}
+                  selectedReviewId={selectedReviewId}
+                  onSelectReview={handleSelectReview}
+                  onGenerateReply={(id) => void generateReply(id)}
+                  isGeneratingReply={isGeneratingReply}
+                  sortField={sortField}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                />
               ) : (
-                filteredReviews.map((review) => (
-                  <ReviewCard
-                    key={review.id}
-                    review={review}
-                    isSelected={review.id === selectedReviewId}
-                    onClick={() => handleSelectReview(review.id)}
-                    onGenerateReply={() => void generateReply(review.id)}
-                    isGenerating={isGeneratingReply(review.id)}
-                  />
-                ))
+                <div className="space-y-2.5">
+                  {sortedReviews.map((review) => (
+                    <ReviewCard
+                      key={review.id}
+                      review={review}
+                      isSelected={review.id === selectedReviewId}
+                      onClick={() => handleSelectReview(review.id)}
+                      onGenerateReply={() => void generateReply(review.id)}
+                      isGenerating={isGeneratingReply(review.id)}
+                    />
+                  ))}
+                </div>
               )}
             </div>
 
@@ -344,6 +420,9 @@ export default function ReviewsContent() {
                   review={selectedReview}
                   onGenerateReply={(id) => void generateReply(id)}
                   isGeneratingReply={isGeneratingReply}
+                  onUpdateStatus={updateStatus}
+                  isUpdatingStatus={isUpdatingStatus}
+                  onRefresh={refresh}
                 />
               </div>
             </div>
@@ -354,15 +433,12 @@ export default function ReviewsContent() {
       {/* Mobile Detail Modal */}
       {showMobileDetail && selectedReview && (
         <div className="lg:hidden fixed inset-0 z-50">
-          {/* Overlay */}
           <div 
             className="absolute inset-0 bg-black/50"
             onClick={() => setShowMobileDetail(false)}
           />
           
-          {/* Modal */}
           <div className="absolute inset-x-0 bottom-0 max-h-[90vh] bg-white rounded-t-2xl overflow-hidden animate-slide-up">
-            {/* Handle */}
             <div className="sticky top-0 bg-white border-b border-slate-100 px-4 py-3 flex items-center justify-between z-10">
               <h3 className="text-base font-semibold text-slate-900">Review Details</h3>
               <button
@@ -373,12 +449,14 @@ export default function ReviewsContent() {
               </button>
             </div>
             
-            {/* Content */}
             <div className="overflow-auto max-h-[calc(90vh-56px)] p-4">
               <ReviewDetailPanel
                 review={selectedReview}
                 onGenerateReply={(id) => void generateReply(id)}
                 isGeneratingReply={isGeneratingReply}
+                onUpdateStatus={updateStatus}
+                isUpdatingStatus={isUpdatingStatus}
+                onRefresh={refresh}
               />
             </div>
           </div>

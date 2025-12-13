@@ -7,20 +7,26 @@ type StatusPillProps = {
 
 export function StatusPill({ status }: StatusPillProps) {
   const map: Record<ReviewStatus, { label: string; className: string }> = {
-    Drafted: {
-      label: "Drafted",
-      className: "bg-sky-50 text-sky-700",
-    },
-    New: {
+    new: {
       label: "New",
+      className: "bg-violet-50 text-violet-700",
+    },
+    drafted: {
+      label: "Drafted",
       className: "bg-amber-50 text-amber-700",
     },
-    Approved: {
+    approved: {
       label: "Approved",
       className: "bg-emerald-50 text-emerald-700",
     },
+    posted: {
+      label: "Posted",
+      className: "bg-sky-50 text-sky-700",
+    },
   };
-  const cfg = map[status];
+  
+  const cfg = map[status] || map.new;
+  
   return (
     <span
       className={

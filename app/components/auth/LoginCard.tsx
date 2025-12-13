@@ -43,9 +43,20 @@ export default function LoginCard() {
       }
 
       const json = await res.json();
-      const auth = json.auth as AuthInfo;
+      
+      // 새 API 응답 형식 처리
+      const auth: AuthInfo = {
+        userId: json.user?.id ?? "",
+        email: json.user?.email ?? "",
+        salonId: json.salon?.id ?? "",
+        salonName: json.salon?.name ?? "",
+        // Supabase 세션 정보
+        accessToken: json.session?.accessToken,
+        refreshToken: json.session?.refreshToken,
+        expiresAt: json.session?.expiresAt,
+      };
 
-      // 🔐 세션 저장 (useRequireLogin과 같은 키 사용)
+      // 🔐 세션 저장
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(auth));
 
       // 🚀 대시보드 이동

@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { ApiResponse, ApiError } from "@/lib/api/types";
 import { ErrorCode } from "@/lib/api/types";
+import { verifyAuthAndSalonAccess } from "@/lib/auth/verifyApiAuth";
 
 /* ===== 환경변수 ===== */
 
@@ -85,6 +86,15 @@ export async function GET(
       return NextResponse.json<ApiError>(
         { ok: false, error: "Missing salon ID", code: ErrorCode.INVALID_SALON_ID },
         { status: 400 }
+      );
+    }
+
+    // ✅ 인증 검증
+    const auth = await verifyAuthAndSalonAccess(req, salonId);
+    if (!auth.ok) {
+      return NextResponse.json<ApiError>(
+        { ok: false, error: auth.error, code: auth.code },
+        { status: auth.code === "FORBIDDEN" ? 403 : 401 }
       );
     }
 
@@ -217,6 +227,15 @@ async function handleUpdate(
       return NextResponse.json<ApiError>(
         { ok: false, error: "Missing salon ID", code: ErrorCode.INVALID_SALON_ID },
         { status: 400 }
+      );
+    }
+
+    // ✅ 인증 검증
+    const auth = await verifyAuthAndSalonAccess(req, salonId);
+    if (!auth.ok) {
+      return NextResponse.json<ApiError>(
+        { ok: false, error: auth.error, code: auth.code },
+        { status: auth.code === "FORBIDDEN" ? 403 : 401 }
       );
     }
 

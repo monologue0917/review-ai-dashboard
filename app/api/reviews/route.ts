@@ -233,12 +233,12 @@ export async function POST(
     });
 
     // 4) Upsert
-    //  - 같은 (salon_id + review_id) 한 번 더 넣으면 UPDATE
-    //  - UNIQUE (salon_id, review_id) 제약조건과 맞추기
+    //  - 같은 (salon_id + review_id + source) 한 번 더 넣으면 UPDATE
+    //  - UNIQUE (salon_id, review_id, source) 제약조건과 맞추기
     const { data, error } = await supabase
       .from("reviews")
       .upsert(rows, {
-        onConflict: "salon_id,review_id",
+        onConflict: "salon_id,review_id,source",
         ignoreDuplicates: false,
       })
       .select("id");

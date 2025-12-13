@@ -52,7 +52,7 @@ export function TopBar({ salonName, userEmail, userName }: TopBarProps) {
   };
 
   return (
-    <div className="h-16 border-b border-slate-200 bg-white/80 backdrop-blur-sm flex items-center justify-between px-6">
+    <div className="h-16 border-b border-slate-200 bg-white/80 backdrop-blur-sm flex items-center justify-between px-6 relative z-20">
       {/* 좌측: 살롱 정보 */}
       <div className="flex items-center gap-3">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-200">

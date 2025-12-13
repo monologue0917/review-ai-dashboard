@@ -32,7 +32,7 @@ export function Skeleton({ className = "", animate = true }: SkeletonProps) {
 
 export function ReviewCardSkeleton() {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5">
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="flex items-start gap-4">
         {/* Avatar */}
         <Skeleton className="h-12 w-12 rounded-full shrink-0" />
@@ -70,7 +70,7 @@ export function ReviewCardSkeleton() {
 
 export function ReviewListSkeleton({ count = 5 }: { count?: number }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       {Array.from({ length: count }).map((_, i) => (
         <ReviewCardSkeleton key={i} />
       ))}
@@ -165,6 +165,56 @@ export function SettingsPageSkeleton() {
       <SettingsCardSkeleton />
       <SettingsCardSkeleton />
       <SettingsCardSkeleton />
+    </div>
+  );
+}
+
+/* ===== Review Table Skeleton ===== */
+
+export function ReviewTableSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+      {/* Header */}
+      <div className="bg-slate-50 border-b border-slate-200 px-4 py-3">
+        <div className="flex gap-4">
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-4 w-32 flex-1" />
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-4 w-16" />
+        </div>
+      </div>
+      
+      {/* Rows */}
+      <div className="divide-y divide-slate-100">
+        {Array.from({ length: rows }).map((_, i) => (
+          <div key={i} className="px-4 py-3 flex items-center gap-4">
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-6 w-6 rounded" />
+            <div className="flex gap-0.5">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <Skeleton key={s} className="h-3 w-3" />
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-7 w-7 rounded-full" />
+              <Skeleton className="h-4 w-24" />
+            </div>
+            <Skeleton className="h-4 flex-1" />
+            <Skeleton className="h-5 w-16 rounded-full" />
+            <Skeleton className="h-4 w-12" />
+            <Skeleton className="h-7 w-16 rounded-lg" />
+          </div>
+        ))}
+      </div>
+      
+      {/* Footer */}
+      <div className="bg-slate-50 border-t border-slate-200 px-4 py-2">
+        <Skeleton className="h-3 w-32" />
+      </div>
     </div>
   );
 }
