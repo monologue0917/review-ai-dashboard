@@ -95,15 +95,16 @@ export async function verifyAuth(
       };
     }
 
-    // 4) users 테이블에서 salon 정보 조회
+    // 4) users 테이블에서 유저 정보 조회
+    // ✅ user.id는 Supabase Auth ID이므로 auth_id 컨럼으로 조회
     const { data: userData, error: userError } = await supabaseAdmin
       .from("users")
-      .select("id, email, salon_id")
-      .eq("id", user.id)
+      .select("id, email")
+      .eq("auth_id", user.id)
       .single();
 
     if (userError || !userData) {
-      console.error("[verifyAuth] User not found:", userError?.message);
+      console.error("[verifyAuth] User not found for auth_id:", user.id, userError?.message);
       return {
         ok: false,
         error: "User not found in database",
@@ -111,8 +112,17 @@ export async function verifyAuth(
       };
     }
 
-    // 5) Salon 필수 체크
-    if (requireSalon && !userData.salon_id) {
+    // 5) salons 테이블에서 살롱 정보 조회 (owner_user_id로 조회)
+    const { data: salonData } = await supabaseAdmin
+      .from("salons")
+      .select("id")
+      .eq("owner_user_id", userData.id)
+      .single();
+
+    const salonId = salonData?.id || "";
+
+    // 6) Salon 필수 체크
+    if (requireSalon && !salonId) {
       return {
         ok: false,
         error: "No salon associated with this user",
@@ -124,7 +134,7 @@ export async function verifyAuth(
       ok: true,
       userId: userData.id,
       email: userData.email || user.email || "",
-      salonId: userData.salon_id || "",
+      salonId: salonId,
     };
   } catch (err) {
     console.error("[verifyAuth] Unexpected error:", err);

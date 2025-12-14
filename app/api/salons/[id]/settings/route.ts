@@ -132,28 +132,24 @@ export async function GET(
     const typedConnection = googleConnection as GoogleConnectionRow | null;
 
     // salon_google_connections가 없으면, google_accounts에서 직접 확인
+    // ✅ auth.userId를 사용 (salons.user_id 대신)
     let googleEmail: string | null = null;
     let googleConnected = !!typedConnection;
 
     if (!typedConnection) {
-      // users 테이블에서 user_id 찾기
-      const { data: salonData } = await supabase
-        .from("salons")
-        .select("user_id")
-        .eq("id", salonId)
-        .single();
+      // 인증된 사용자의 userId로 google_accounts 조회
+      const { data: googleAccount } = await supabase
+        .from("google_accounts")
+        .select("email")
+        .eq("user_id", auth.userId)
+        .maybeSingle();
 
-      if (salonData?.user_id) {
-        const { data: googleAccount } = await supabase
-          .from("google_accounts")
-          .select("email")
-          .eq("user_id", salonData.user_id)
-          .maybeSingle();
-
-        if (googleAccount) {
-          googleConnected = true;
-          googleEmail = googleAccount.email;
-        }
+      if (googleAccount) {
+        googleConnected = true;
+        googleEmail = googleAccount.email;
+        console.log("[GET /api/salons/:id/settings] Google account found:", googleEmail);
+      } else {
+        console.log("[GET /api/salons/:id/settings] No Google account for userId:", auth.userId);
       }
     } else {
       googleEmail = typedConnection.google_accounts?.email || null;
