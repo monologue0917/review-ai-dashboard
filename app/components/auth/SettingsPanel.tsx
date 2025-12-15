@@ -883,6 +883,41 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
           </div>
         }
       />
+
+      {/* 🔗 Google Disconnect 확인 모달 */}
+      <ConfirmModal
+        isOpen={showDisconnectModal}
+        onClose={() => setShowDisconnectModal(false)}
+        onConfirm={handleConfirmDisconnect}
+        title="Disconnect Google Account?"
+        icon={<Unlink className="h-6 w-6" />}
+        variant="danger"
+        confirmText={isDisconnecting ? "Disconnecting..." : "Yes, Disconnect"}
+        cancelText="Cancel"
+        message={
+          <div className="space-y-3 text-left mt-2">
+            <p className="text-sm text-slate-600">
+              Are you sure you want to disconnect your Google Business Profile?
+            </p>
+            <div className="rounded-lg bg-rose-50 border border-rose-200 p-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-rose-600 mt-0.5 shrink-0" />
+                <div className="text-xs text-rose-800">
+                  <p className="font-semibold mb-1">This will:</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    <li>Remove the connection to Google</li>
+                    <li>Stop syncing new reviews</li>
+                    <li>Existing reviews will remain in the dashboard</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 text-center">
+              You can reconnect anytime by clicking "Connect Google Account".
+            </p>
+          </div>
+        }
+      />
     </div>
   );
 }
