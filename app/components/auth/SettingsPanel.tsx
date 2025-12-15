@@ -147,6 +147,10 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
   const [showAutoReplyWarning, setShowAutoReplyWarning] = useState(false);
   const [pendingAutoReplySource, setPendingAutoReplySource] = useState<AutoReplySource | null>(null);
 
+  // 🔗 Google 연결 해제 모달
+  const [showDisconnectModal, setShowDisconnectModal] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+
   // 설정 불러오기
   useEffect(() => {
     if (!salonId) {
@@ -303,12 +307,16 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
     }
   };
 
-  // Google 연결 해제
-  const disconnectGoogle = async () => {
+  // Google 연결 해제 모달 열기
+  const disconnectGoogle = () => {
+    setShowDisconnectModal(true);
+  };
+
+  // Google 연결 해제 실행
+  const handleConfirmDisconnect = async () => {
     if (!salonId) return;
 
-    if (!confirm("Are you sure you want to disconnect Google?")) return;
-
+    setIsDisconnecting(true);
     try {
       const res = await fetchWithTimeout(`/api/google/connect-location?salonId=${salonId}`, {
         method: 'DELETE',
@@ -327,6 +335,7 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
           googleLocationName: null,
         });
         setLastSyncedAt(null);
+        setShowDisconnectModal(false);
       } else {
         setError(getErrorMessage(json.error || "unknown"));
       }
@@ -337,6 +346,8 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
       } else {
         setError(getErrorMessage("unknown"));
       }
+    } finally {
+      setIsDisconnecting(false);
     }
   };
 
@@ -485,20 +496,35 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
       {/* Google Connection Section */}
       <AppCard className="overflow-hidden">
         <div className="border-b border-slate-100 bg-gradient-to-r from-blue-50 to-green-50 px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-r from-blue-500 to-green-500 shadow-lg shadow-blue-500/30 text-white font-bold">
-              G
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-r from-blue-500 to-green-500 shadow-lg shadow-blue-500/30 text-white font-bold">
+                G
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Google Business Profile</h2>
+                <p className="text-sm text-slate-500">Connect to sync reviews automatically</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">Google Business Profile</h2>
-              <p className="text-sm text-slate-500">Connect to sync reviews automatically</p>
-            </div>
+            {/* 연결된 상태일 때만 해제 버튼 표시 */}
+            {(form.googleConnected || googleSuccess) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={disconnectGoogle}
+                className="text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                title="Disconnect Google Account"
+              >
+                <Unlink className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1">Disconnect</span>
+              </Button>
+            )}
           </div>
         </div>
 
         <div className="p-6">
           {form.googleConnected && form.googleLocationName ? (
-            // 연결됨 상태 (위치까지 선택 완료) - 모바일 반응형 개선
+            // 연결됨 상태 (위치까지 선택 완료)
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-xl bg-emerald-50 border border-emerald-200">
                 <div className="flex items-center gap-3">
@@ -513,29 +539,19 @@ export default function SettingsPanel({ auth }: SettingsPanelProps) {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 justify-end">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={fetchGoogleLocations}
-                    loading={isLoadingLocations}
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    <span className="hidden sm:inline">Change</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={disconnectGoogle}
-                    className="text-rose-600 hover:bg-rose-50"
-                  >
-                    <Unlink className="h-4 w-4" />
-                  </Button>
-                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={fetchGoogleLocations}
+                  loading={isLoadingLocations}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  <span className="hidden sm:inline">Change Location</span>
+                </Button>
               </div>
             </div>
           ) : form.googleConnected || googleSuccess ? (
-            // Google 계정 연결됨, 위치 선택 필요 - 모바일 반응형 개선
+            // Google 계정 연결됨, 위치 선택 필요
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200">
                 <div className="flex items-center gap-3">

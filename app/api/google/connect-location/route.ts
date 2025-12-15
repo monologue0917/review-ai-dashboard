@@ -190,28 +190,41 @@ export async function DELETE(
       );
     }
 
-    // 연결 삭제
-    const { error: deleteError } = await supabase
+    console.log('[Disconnect Google] Starting disconnect for salon:', salonId, 'user:', auth.userId);
+
+    // 1) salon_google_connections 삭제
+    const { error: connectionDeleteError } = await supabase
       .from('salon_google_connections')
       .delete()
       .eq('salon_id', salonId);
 
-    if (deleteError) {
-      console.error('[Disconnect Location] Delete error:', deleteError);
+    if (connectionDeleteError) {
+      console.error('[Disconnect Google] Connection delete error:', connectionDeleteError);
+      // 계속 진행 (connection이 없을 수도 있음)
+    }
+
+    // 2) google_accounts 삭제 (해당 유저의 모든 Google 계정)
+    const { error: accountDeleteError } = await supabase
+      .from('google_accounts')
+      .delete()
+      .eq('user_id', auth.userId);
+
+    if (accountDeleteError) {
+      console.error('[Disconnect Google] Account delete error:', accountDeleteError);
       return NextResponse.json<ApiError>(
-        { ok: false, error: 'Failed to disconnect', code: ErrorCode.DATABASE_ERROR },
+        { ok: false, error: 'Failed to disconnect Google account', code: ErrorCode.DATABASE_ERROR },
         { status: 500 }
       );
     }
 
-    console.log('[Disconnect Location] Disconnected salon:', salonId);
+    console.log('[Disconnect Google] ✅ Fully disconnected for user:', auth.userId);
 
     return NextResponse.json<ApiResponse<{ disconnected: boolean }>>({
       ok: true,
       data: { disconnected: true },
     });
   } catch (err) {
-    console.error('[Disconnect Location] Unexpected error:', err);
+    console.error('[Disconnect Google] Unexpected error:', err);
     return NextResponse.json<ApiError>(
       { ok: false, error: 'Internal server error', code: ErrorCode.INTERNAL_ERROR },
       { status: 500 }
