@@ -116,12 +116,22 @@ export async function GET(req: NextRequest) {
       return errorRedirect(baseUrl, GoogleErrorCode.INVALID_STATE);
     }
 
-    console.log('[Google Callback] State decoded:', { userId, salonId });
+    console.log('[Google Callback] State decoded:', { userId, salonId, timestamp: stateData.timestamp });
 
-    // 4) State 타임스탬프 검증 - 10분 이내 (케이스 2)
-    const stateAge = Date.now() - stateData.timestamp;
-    if (stateAge > 10 * 60 * 1000) {
-      console.error('[Google Callback] State expired:', stateAge, 'ms');
+    // 4) State 타임스탬프 검증 - 30분 이내 (케이스 2)
+    const now = Date.now();
+    const stateAge = now - stateData.timestamp;
+    const maxAge = 30 * 60 * 1000; // 30분
+    console.log('[Google Callback] Time check:', {
+      now,
+      stateTimestamp: stateData.timestamp,
+      stateAge,
+      stateAgeSeconds: Math.round(stateAge / 1000),
+      maxAgeSeconds: maxAge / 1000,
+    });
+    
+    if (stateAge > maxAge) {
+      console.error('[Google Callback] State expired:', stateAge, 'ms (max:', maxAge, 'ms)');
       return errorRedirect(baseUrl, GoogleErrorCode.STATE_EXPIRED);
     }
 
